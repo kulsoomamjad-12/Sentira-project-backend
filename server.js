@@ -28,6 +28,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// A friendly response at the bare root URL — this is an API-only backend
+// with no page of its own, so without this, visiting the deployed URL
+// directly (or a host's uptime check hitting "/") shows Express's default
+// "Cannot GET /", which looks like a broken deploy even when everything is
+// actually running fine.
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'Sentiment Analyzer API is running' });
+});
+
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/feedback', require('./routes/feedbackRoutes'));
