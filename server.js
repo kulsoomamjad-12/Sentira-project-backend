@@ -63,7 +63,13 @@ if (!IS_SERVERLESS) {
   });
 }
 
-const noopIo = { to: () => ({ emit: () => {} }) };
+// Chainable no-op covering every socket.io call pattern this app actually
+// uses: req.io.to(x).emit(...) AND req.io.to(x).except(y).emit(...) (ticket
+// create/update exclude the acting user's own room). Both must return
+// something with the same shape, since .except() itself needs to be
+// chainable back to .emit().
+const noopIoChain = { emit: () => {}, except: () => noopIoChain };
+const noopIo = { to: () => noopIoChain };
 
 // Pass io (or the no-op stand-in) to routes
 app.use((req, res, next) => {

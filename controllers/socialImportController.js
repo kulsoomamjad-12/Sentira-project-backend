@@ -125,4 +125,34 @@ const runSourceNow = async (req, res) => {
   }
 };
 
-module.exports = { fetchNow, createSource, getSources, updateSource, deleteSource, runSourceNow };
+// GET /api/social-import/cron-run  (called by Vercel's own Cron Jobs
+// scheduler — see vercel.json's "crons" entry — since node-cron can't stay
+// running between serverless invocations. Vercel automatically sends
+// `Authorization: Bearer <CRON_SECRET>` on cron-triggered requests when
+// CRON_SECRET is set as an env var; that's checked here instead of a normal
+// user JWT, since there's no logged-in admin making this request.
+// Harmless if you're NOT on Vercel (node-cron still runs there instead) —
+// this route just sits unused in that case.
+const cronRunAll = async (req, res) => {
+  // Fail closed, not open: without CRON_SECRET configured this endpoint
+  // would otherwise be a public, unauthenticated trigger that spends real
+  // Apify usage on every hit — refuse everything until it's set, rather
+  // than silently allowing anyone who finds the URL to run it.
+  if (!process.env.CRON_SECRET || req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  const sources = await SocialImportSource.find({ isActive: true });
+  const results = [];
+  for (const source of sources) {
+    try {
+      const result = await runSource(source, req.io);
+      results.push({ sourceId: source._id, ...result });
+    } catch (error) {
+      results.push({ sourceId: source._id, error: error.message });
+    }
+  }
+  res.json({ checked: sources.length, results });
+};
+
+module.exports = { fetchNow, createSource, getSources, updateSource, deleteSource, runSourceNow, cronRunAll };
