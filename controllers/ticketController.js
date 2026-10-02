@@ -13,22 +13,20 @@ const companySubmissionIds = async (companyId) => {
   return submissions.map((s) => s._id);
 };
 
-// POST /api/tickets  (protected - create a ticket from a feedback submission)
+// POST /api/tickets  (admin-only - create a ticket from a feedback submission;
+// see routes/ticketRoutes.js for the authorize('admin') guard)
 const createTicket = async (req, res) => {
   try {
     const { feedbackId, assignedTo } = req.body;
-    const isAdmin = req.user.role === 'admin';
 
     const feedback = await FeedbackSubmission.findById(feedbackId).populate('form');
     if (!feedback || feedback.form?.company?.toString() !== req.user.company.toString()) {
       return res.status(404).json({ message: 'Feedback submission not found' });
     }
 
-    // Only admins can assign on creation; a member's own choice of
-    // assignedTo (if somehow sent) is silently ignored, not honored.
     const ticket = await Ticket.create({
       feedback: feedbackId,
-      assignedTo: isAdmin ? assignedTo || undefined : undefined,
+      assignedTo: assignedTo || undefined,
       createdBy: req.user._id,
     });
 
