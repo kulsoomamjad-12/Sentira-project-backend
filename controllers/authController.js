@@ -9,6 +9,30 @@ const generateToken = (id) =>
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 
+// Builds the full, clickable invite URL. CLIENT_URL is preferred, but if it's
+// missing on the deployed backend the link would come out as
+// "undefined/register?..." — so fall back to the frontend's own origin (the
+// admin is calling this from the frontend), then strip any trailing slash
+// and make sure there's a protocol so email clients render it as a link.
+const buildInviteLink = (req, inviteCode) => {
+  let base = (process.env.CLIENT_URL || req.get('origin') || '').trim();
+  if (!base) {
+    const referer = req.get('referer');
+    if (referer) {
+      try {
+        base = new URL(referer).origin;
+      } catch {
+        base = '';
+      }
+    }
+  }
+  base = base.replace(/\/+$/, '');
+  if (base && !/^https?:\/\//i.test(base)) {
+    base = `https://${base}`;
+  }
+  return `${base}/register?invite=${encodeURIComponent(inviteCode)}`;
+};
+
 // POST /api/auth/register
 const register = async (req, res) => {
   try {
@@ -171,7 +195,7 @@ const getInviteLink = async (req, res) => {
 
     res.json({
       inviteCode: company.inviteCode,
-      inviteLink: `${process.env.CLIENT_URL}/register?invite=${company.inviteCode}`,
+      inviteLink: buildInviteLink(req, company.inviteCode),
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to load invite link', error: error.message });
@@ -192,7 +216,7 @@ const regenerateInviteLink = async (req, res) => {
 
     res.json({
       inviteCode: company.inviteCode,
-      inviteLink: `${process.env.CLIENT_URL}/register?invite=${company.inviteCode}`,
+      inviteLink: buildInviteLink(req, company.inviteCode),
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to regenerate invite link', error: error.message });
@@ -216,7 +240,7 @@ const sendInviteEmail = async (req, res) => {
       return res.status(404).json({ message: 'Company not found' });
     }
 
-    const inviteLink = `${process.env.CLIENT_URL}/register?invite=${company.inviteCode}`;
+    const inviteLink = buildInviteLink(req, company.inviteCode);
 
     // One shared template for every invite — only the invitee's name, the
     // admin's name, the company name, and the link ever change.
@@ -226,7 +250,16 @@ const sendInviteEmail = async (req, res) => {
       html: `
         <p>Hi ${name.trim()},</p>
         <p>${req.user.name} has invited you to join <strong>${company.name}</strong> on Sentira as a team member. Click the link below to create your account and get started:</p>
-        <p><a href="${inviteLink}">${inviteLink}</a></p>
+        <p style="margin:24px 0;">
+          <a href="${inviteLink}" target="_blank" rel="noopener"
+             style="background:#6d28d9;color:#ffffff;padding:12px 22px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block;">
+            Join ${company.name}
+          </a>
+        </p>
+        <p>If the button doesn't work, copy and paste this link into your browser:<br>
+          <a href="${inviteLink}" target="_blank" rel="noopener">${inviteLink}</a>
+        </p>
+        <p>Your invite code is already filled in when you open the link — just add your name, email, and password.</p>
       `,
     });
 
