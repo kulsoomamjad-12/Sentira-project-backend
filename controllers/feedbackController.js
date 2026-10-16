@@ -1,7 +1,7 @@
 const FeedbackForm = require('../models/FeedbackForm');
 const FeedbackSubmission = require('../models/FeedbackSubmission');
 const Ticket = require('../models/Ticket');
-const { analyzeFeedback, translateText, draftResponse } = require('../utils/aiAnalysis');
+const { analyzeFeedback, translateText, draftResponse, normalizeUrgency } = require('../utils/aiAnalysis');
 const { sendMail } = require('../utils/mailer');
 const { notifyNewSubmission } = require('../utils/notify');
 
@@ -93,7 +93,7 @@ const submitFeedback = async (req, res) => {
     }
 
     // Run the multi-dimensional AI analysis (see server/utils/aiAnalysis.js)
-    const aiAnalysis = await analyzeFeedback(comment, rating);
+    const aiAnalysis = await analyzeFeedback(comment, rating, { ratingType: form.ratingType, responses: builtResponses });
 
     const submission = await FeedbackSubmission.create({
       form: form._id,
@@ -143,7 +143,7 @@ const logExternalFeedback = async (req, res) => {
       return res.status(400).json({ message: responsesError });
     }
 
-    const aiAnalysis = await analyzeFeedback(comment, rating);
+    const aiAnalysis = await analyzeFeedback(comment, rating, { ratingType: form.ratingType, responses: builtResponses });
 
     const submission = await FeedbackSubmission.create({
       form: form._id,
@@ -174,7 +174,8 @@ const getFeedback = async (req, res) => {
 
     const filter = { form: { $in: formIds } };
     if (sentiment) filter['aiAnalysis.sentiment'] = sentiment;
-    if (urgency) filter['aiAnalysis.urgency'] = urgency;
+    // Older submissions may still be stored as 'medium', which now counts as 'high'
+    if (urgency) filter['aiAnalysis.urgency'] = urgency === 'high' ? { $in: ['high', 'medium'] } : urgency;
     if (tag) filter['aiAnalysis.tags'] = tag;
     if (startDate || endDate) {
       filter.createdAt = {};
@@ -182,7 +183,20 @@ const getFeedback = async (req, res) => {
       if (endDate) filter.createdAt.$lte = new Date(endDate);
     }
 
-    const feedback = await FeedbackSubmission.find(filter).sort({ createdAt: -1 }).limit(200);
+    // Populate the form's own question labels (rating + comment) so the
+    // Action Center can show every question next to the customer's answer,
+    // not just the comment. Custom-question labels are already snapshotted
+    // on each submission's `responses`.
+    const feedback = await FeedbackSubmission.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .populate('form', 'title ratingType ratingLabel commentLabel')
+      .lean();
+
+    for (const item of feedback) {
+      if (item.aiAnalysis) item.aiAnalysis.urgency = normalizeUrgency(item.aiAnalysis.urgency);
+    }
+
     res.json({ feedback });
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch feedback', error: error.message });

@@ -7,12 +7,12 @@ const { fallbackAnalysis } = require('./aiAnalysis');
 // it's the one piece of aiAnalysis.js that's pure and safe to unit test
 // without mocking network calls or environment variables.
 
-test('classifies a comment with a negative keyword as Negative/frustrated/medium urgency', () => {
+test('classifies a comment with a negative keyword as Negative/frustrated/high urgency', () => {
   const result = fallbackAnalysis('The app keeps crashing every time I open it.');
   assert.equal(result.sentiment, 'Negative');
   assert.equal(result.emotion, 'frustrated');
   assert.equal(result.intensity, 6);
-  assert.equal(result.urgency, 'medium');
+  assert.equal(result.urgency, 'high');
   assert.equal(result.actionable, true);
 });
 
@@ -68,4 +68,37 @@ test('summary is truncated to 97 characters plus an ellipsis when the comment is
 test('stamps analyzedAt with a real Date', () => {
   const result = fallbackAnalysis('Some feedback.');
   assert.ok(result.analyzedAt instanceof Date);
+});
+
+test('short complaints like "Poor quality" are Negative/high, even with a high rating', () => {
+  const result = fallbackAnalysis('Poor quality', 5, { ratingType: 'stars' });
+  assert.equal(result.sentiment, 'Negative');
+  assert.equal(result.urgency, 'high');
+});
+
+test('damaged-in-shipping complaints are Negative and tagged as shipping', () => {
+  const result = fallbackAnalysis('your products are damaged when they shipped or paked');
+  assert.equal(result.sentiment, 'Negative');
+  assert.ok(result.tags.includes('Shipping & Packaging'));
+});
+
+test('a negated positive ("not good") is Negative', () => {
+  assert.equal(fallbackAnalysis('it was not good').sentiment, 'Negative');
+});
+
+test('health/safety complaints are critical', () => {
+  const result = fallbackAnalysis('the product causes allergy', 5, { ratingType: 'stars' });
+  assert.equal(result.sentiment, 'Negative');
+  assert.equal(result.urgency, 'critical');
+});
+
+test('a low rating decides only when the text has no clear feeling', () => {
+  assert.equal(fallbackAnalysis('ok', 1, { ratingType: 'stars' }).sentiment, 'Negative');
+  assert.equal(fallbackAnalysis('ok', 5, { ratingType: 'stars' }).sentiment, 'Positive');
+});
+
+test('never returns medium urgency', () => {
+  for (const c of ['bad', 'great', 'meh', 'scam']) {
+    assert.notEqual(fallbackAnalysis(c).urgency, 'medium');
+  }
 });

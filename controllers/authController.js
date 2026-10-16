@@ -15,7 +15,18 @@ const generateToken = (id) =>
 // admin is calling this from the frontend), then strip any trailing slash
 // and make sure there's a protocol so email clients render it as a link.
 const buildInviteLink = (req, inviteCode) => {
-  let base = (process.env.CLIENT_URL || req.get('origin') || '').trim();
+  let base = (process.env.CLIENT_URL || '').trim();
+  // Tolerate junk pasted into the env var (e.g. "Value: https://...") by
+  // pulling out just the URL part.
+  const urlInEnv = base.match(/https?:\/\/[^\s"'<>]+/i);
+  if (urlInEnv) {
+    base = urlInEnv[0];
+  } else if (base.includes(' ') || base.includes(':')) {
+    base = '';
+  }
+  if (!base) {
+    base = (req.get('origin') || '').trim();
+  }
   if (!base) {
     const referer = req.get('referer');
     if (referer) {

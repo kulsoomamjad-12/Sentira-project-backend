@@ -58,6 +58,10 @@ const feedbackSubmissionSchema = new mongoose.Schema(
         ],
       },
       intensity: { type: Number, min: 1, max: 10 }, // how strongly they feel
+      // New submissions are only ever low/high/critical (see
+      // normalizeUrgency in utils/aiAnalysis.js); 'medium' stays in the enum
+      // only so older stored submissions still validate — they're shown as
+      // 'high' when read.
       urgency: {
         type: String,
         enum: ['low', 'medium', 'high', 'critical'],
@@ -66,6 +70,9 @@ const feedbackSubmissionSchema = new mongoose.Schema(
       actionable: { type: Boolean, default: false },
       tags: [{ type: String, trim: true }],
       summary: { type: String, trim: true },
+      // 'ai' = analyzed by the AI model, 'fallback' = the keyword backup ran
+      // because the AI call failed (see utils/aiAnalysis.js)
+      method: { type: String, enum: ['ai', 'fallback'] },
       analyzedAt: { type: Date },
     },
 

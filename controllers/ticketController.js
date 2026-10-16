@@ -83,6 +83,11 @@ const updateTicket = async (req, res) => {
       return res.status(404).json({ message: 'Ticket not found' });
     }
 
+    // A resolved ticket is closed — no more status, notes, or reassignment.
+    if (existing.status === 'resolved') {
+      return res.status(400).json({ message: 'This ticket is already resolved and can no longer be changed' });
+    }
+
     const isAssignee = existing.assignedTo && existing.assignedTo.toString() === req.user._id.toString();
 
     if (isWorkUpdate && isAdmin) {
